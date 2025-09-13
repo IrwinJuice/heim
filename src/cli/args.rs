@@ -1,6 +1,5 @@
 use clap::{Parser, Subcommand};
 
-#[cfg(not(feature="win-service"))]
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
 pub struct Cli {
@@ -9,7 +8,6 @@ pub struct Cli {
 
 }
 
-#[cfg(not(feature="win-service"))]
 #[derive(Debug, Subcommand)]
 pub enum Commands {
     /// Install the service (admin required)

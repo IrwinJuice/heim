@@ -1,9 +1,9 @@
-mod win_service;
-mod config;
 mod cli;
+mod config;
+#[cfg(feature = "win-service")]
+mod win_service;
 
 use std::{
-    ffi::OsString,
     net::SocketAddr,
     path::PathBuf,
     sync::{
@@ -20,25 +20,21 @@ use axum::{
     extract::State,
     routing::{get, post},
 };
-use clap::Parser;
 use serde::{Deserialize, Serialize};
-use tokio::{net::TcpListener, runtime::Runtime, time::sleep};
-use tracing::{error, info};
+use tokio::{net::TcpListener, time::sleep};
+use tracing::info;
 use tracing_subscriber::{EnvFilter, fmt, layer::SubscriberExt, util::SubscriberInitExt};
 
-use windows_service::service::ServiceStartType;
-use windows_service::{
-    define_windows_service,
-    service::{
-        ServiceAccess, ServiceControl, ServiceControlAccept, ServiceErrorControl, ServiceExitCode,
-        ServiceInfo, ServiceState, ServiceStatus, ServiceType,
-    },
-    service_control_handler::{self, ServiceControlHandlerResult},
-    service_dispatcher,
-    service_manager::{ServiceManager, ServiceManagerAccess},
-};
+#[cfg(feature = "win-service")]
 use crate::cli::args::{Cli, Commands};
-use crate::win_service::{install_service, start_service, stop_service, uninstall_service, SERVICE_DISPLAY_NAME, SERVICE_NAME};
+use crate::config::{Config, load_config};
+#[cfg(feature = "win-service")]
+use crate::win_service::{
+    SERVICE_DISPLAY_NAME, SERVICE_NAME, install_service, start_service, stop_service,
+    uninstall_service,
+};
+#[cfg(feature = "win-service")]
+use clap::Parser;
 
 fn init_tracing(default_level: &str) {
     // Initialize tracing once. Safe to call multiple times; subsequent calls are no-ops.
@@ -56,8 +52,6 @@ fn init_tracing(default_level: &str) {
 struct AppState {
     started_at: std::time::Instant,
 }
-
-
 
 async fn root() -> &'static str {
     "Axum + Tokio running as a Windows Service. Try GET /health or POST /echo"
@@ -86,11 +80,9 @@ async fn echo(Json(payload): Json<EchoPayload>) -> Json<EchoPayload> {
 }
 
 async fn run_http_server(addr: SocketAddr, stop_flag: Arc<AtomicBool>) -> Result<()> {
-    let app =
-    Router::new()
+    let app = Router::new()
         .route("/", get(root))
         .route("/health", get(health))
-        .route("/echo", post(echo))
         .with_state(AppState {
             started_at: std::time::Instant::now(),
         });
@@ -115,17 +107,17 @@ async fn run_http_server(addr: SocketAddr, stop_flag: Arc<AtomicBool>) -> Result
     Ok(())
 }
 
-#[cfg(not(feature="win-service"))]
+#[cfg(not(feature = "win-service"))]
 fn main() -> Result<()> {
-
-
+    print!("main");
     Ok(())
 }
 
-#[cfg(feature="win-service")]
+#[cfg(feature = "win-service")]
 fn main() -> Result<()> {
-
     let args = Cli::parse();
+    let config = load_config()?;
+
 
     match args.command {
         Commands::Install => {
@@ -137,7 +129,7 @@ fn main() -> Result<()> {
             println!("Service uninstalled: {}", SERVICE_NAME);
         }
         Commands::Start => {
-            start_service()?;
+            start_service(config)?;
             println!("Service started: {}", SERVICE_NAME);
         }
         Commands::Stop => {
@@ -148,5 +140,3 @@ fn main() -> Result<()> {
 
     Ok(())
 }
-
-

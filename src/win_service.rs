@@ -1,4 +1,6 @@
-use std::ffi::OsString;
+use crate::config::Config;
+use crate::{init_tracing, run_http_server};
+use std::ffi::{OsStr, OsString};
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -6,11 +8,13 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 use tokio::runtime::Runtime;
 use tracing::error;
-use windows_service::{define_windows_service, service_control_handler};
-use windows_service::service::{ServiceAccess, ServiceControl, ServiceControlAccept, ServiceErrorControl, ServiceExitCode, ServiceInfo, ServiceStartType, ServiceState, ServiceStatus, ServiceType};
+use windows_service::service::{
+    ServiceAccess, ServiceControl, ServiceControlAccept, ServiceErrorControl, ServiceExitCode,
+    ServiceInfo, ServiceStartType, ServiceState, ServiceStatus, ServiceType,
+};
 use windows_service::service_control_handler::ServiceControlHandlerResult;
 use windows_service::service_manager::{ServiceManager, ServiceManagerAccess};
-use crate::{init_tracing, run_http_server};
+use windows_service::{define_windows_service, service_control_handler};
 
 pub const SERVICE_NAME: &str = "Heim";
 pub const SERVICE_DISPLAY_NAME: &str = "Heim REST API (Windows Service)";
@@ -18,13 +22,14 @@ pub const SERVICE_DISPLAY_NAME: &str = "Heim REST API (Windows Service)";
 // Wire Windows service entry point to our Rust function
 define_windows_service!(ffi_service_main, windows_service_main);
 
-fn windows_service_main(_arguments: Vec<OsString>) {
-    if let Err(e) = run_service() {
-        // Service stdout/stderr are not visible; write errors to a temp file.
-        let _ = std::fs::write(
-            "C:\\Windows\\Temp\\axum_windows_service_error.log",
-            format!("{e:?}"),
-        );
+fn windows_service_main(arguments: Vec<OsString>) {
+    let log = arguments[0].clone().into_string().unwrap();
+
+    let port = arguments[1].clone().into_string().unwrap();
+
+    if let Err(e) = run_service(port) {
+        // Service stdout/stderr are not visible; write errors to a file.
+        let _ = std::fs::write(log, format!("{e:?}"));
     }
 }
 
@@ -65,13 +70,15 @@ pub fn uninstall_service() -> anyhow::Result<()> {
     Ok(())
 }
 
-pub fn start_service() -> anyhow::Result<()> {
+pub fn start_service(config: Config) -> anyhow::Result<()> {
     let manager = service_manager(ServiceManagerAccess::CONNECT)?;
     let service = manager.open_service(
         SERVICE_NAME,
         ServiceAccess::START | ServiceAccess::QUERY_STATUS,
     )?;
-    service.start(&[] as &[OsString])?; // No args passed
+    let log = config.log.path;
+    let port = format!("{}", config.host.port);
+    service.start(&[OsStr::new(log.as_str()), OsStr::new(port.as_str())])?;
     Ok(())
 }
 
@@ -93,10 +100,7 @@ fn service_manager(connect_flags: ServiceManagerAccess) -> anyhow::Result<Servic
     Ok(ServiceManager::local_computer(None::<&str>, connect_flags)?)
 }
 
-// -----------------------
-// Service lifecycle glue
-// -----------------------
-fn run_service() -> anyhow::Result<()> {
+fn run_service(port: String) -> anyhow::Result<()> {
     init_tracing("info");
 
     let stop_flag = Arc::new(AtomicBool::new(false));
@@ -141,8 +145,9 @@ fn run_service() -> anyhow::Result<()> {
         process_id: None,
     })?;
 
-    // Bind address; keep it on localhost by default to avoid firewall prompts.
-    let addr: SocketAddr = "127.0.0.1:3000".parse().unwrap();
+    let host = format!("127.0.0.1:{}", port);
+
+    let addr: SocketAddr = host.parse()?;
 
     let result = rt.block_on(run_http_server(addr, stop_flag));
 
@@ -173,5 +178,4 @@ fn run_service() -> anyhow::Result<()> {
     })?;
 
     result.map(|_| ())
-
 }
