@@ -1,5 +1,6 @@
 mod win_service;
 mod config;
+mod cli;
 
 use std::{
     ffi::OsString,
@@ -19,6 +20,7 @@ use axum::{
     extract::State,
     routing::{get, post},
 };
+use clap::Parser;
 use serde::{Deserialize, Serialize};
 use tokio::{net::TcpListener, runtime::Runtime, time::sleep};
 use tracing::{error, info};
@@ -35,7 +37,8 @@ use windows_service::{
     service_dispatcher,
     service_manager::{ServiceManager, ServiceManagerAccess},
 };
-use crate::win_service::{SERVICE_DISPLAY_NAME, SERVICE_NAME};
+use crate::cli::args::{Cli, Commands};
+use crate::win_service::{install_service, start_service, stop_service, uninstall_service, SERVICE_DISPLAY_NAME, SERVICE_NAME};
 
 fn init_tracing(default_level: &str) {
     // Initialize tracing once. Safe to call multiple times; subsequent calls are no-ops.
@@ -112,228 +115,38 @@ async fn run_http_server(addr: SocketAddr, stop_flag: Arc<AtomicBool>) -> Result
     Ok(())
 }
 
-// -----------------------
-// Service lifecycle glue
-// -----------------------
-fn run_service() -> Result<()> {
-    init_tracing("info");
+#[cfg(not(feature="win-service"))]
+fn main() -> Result<()> {
 
-    let stop_flag = Arc::new(AtomicBool::new(false));
-    let stop_for_handler = stop_flag.clone();
 
-    // Register control handler
-    let handler = move |control| -> ServiceControlHandlerResult {
-        match control {
-            ServiceControl::Interrogate => ServiceControlHandlerResult::NoError,
-            ServiceControl::Stop => {
-                stop_for_handler.store(true, Ordering::SeqCst);
-                ServiceControlHandlerResult::NoError
-            }
-            _ => ServiceControlHandlerResult::NotImplemented,
-        }
-    };
-
-    let status_handle = service_control_handler::register(SERVICE_NAME, handler)?;
-
-    // Notify SCM: starting
-    status_handle.set_service_status(ServiceStatus {
-        service_type: ServiceType::OWN_PROCESS,
-        current_state: ServiceState::StartPending,
-        controls_accepted: ServiceControlAccept::empty(),
-        exit_code: ServiceExitCode::Win32(0),
-        checkpoint: 1,
-        wait_hint: Duration::from_secs(10),
-        process_id: None,
-    })?;
-
-    // Build a Tokio runtime and start server
-    let rt = Runtime::new()?;
-
-    // Notify SCM: running and accepting stop
-    status_handle.set_service_status(ServiceStatus {
-        service_type: ServiceType::OWN_PROCESS,
-        current_state: ServiceState::Running,
-        controls_accepted: ServiceControlAccept::STOP,
-        exit_code: ServiceExitCode::Win32(0),
-        checkpoint: 0,
-        wait_hint: Duration::default(),
-        process_id: None,
-    })?;
-
-    // Bind address; keep it on localhost by default to avoid firewall prompts.
-    let addr: SocketAddr = "127.0.0.1:3000".parse().unwrap();
-
-    let result = rt.block_on(run_http_server(addr, stop_flag));
-
-    if let Err(err) = &result {
-        error!("Server error: {err:?}");
-    }
-
-    // Notify SCM: stopping
-    status_handle.set_service_status(ServiceStatus {
-        service_type: ServiceType::OWN_PROCESS,
-        current_state: ServiceState::StopPending,
-        controls_accepted: ServiceControlAccept::empty(),
-        exit_code: ServiceExitCode::Win32(0),
-        checkpoint: 0,
-        wait_hint: Duration::from_secs(3),
-        process_id: None,
-    })?;
-
-    // Final transition: stopped
-    status_handle.set_service_status(ServiceStatus {
-        service_type: ServiceType::OWN_PROCESS,
-        current_state: ServiceState::Stopped,
-        controls_accepted: ServiceControlAccept::empty(),
-        exit_code: ServiceExitCode::Win32(0),
-        checkpoint: 0,
-        wait_hint: Duration::default(),
-        process_id: None,
-    })?;
-
-    result.map(|_| ())
+    Ok(())
 }
 
+#[cfg(feature="win-service")]
 fn main() -> Result<()> {
-    let mut args = std::env::args().skip(1);
 
-    match args.next().as_deref() {
-        Some("install") => {
+    let args = Cli::parse();
+
+    match args.command {
+        Commands::Install => {
             install_service()?;
             println!("Service installed: {}", SERVICE_NAME);
         }
-        Some("uninstall") => {
+        Commands::Uninstall => {
             uninstall_service()?;
             println!("Service uninstalled: {}", SERVICE_NAME);
         }
-        Some("start") => {
+        Commands::Start => {
             start_service()?;
             println!("Service started: {}", SERVICE_NAME);
         }
-        Some("stop") => {
+        Commands::Stop => {
             stop_service()?;
             println!("Service stopped: {}", SERVICE_NAME);
-        }
-        Some("run") => {
-            // Console/dev mode with Ctrl+C to stop
-            init_tracing("debug");
-            let addr: SocketAddr = "127.0.0.1:3000".parse().unwrap();
-            let stop_flag = Arc::new(AtomicBool::new(false));
-            let stop_flag_c = stop_flag.clone();
-
-            // Watch for Ctrl+C to trigger graceful shutdown
-            thread::spawn(move || {
-                // Use a blocking thread to listen for Ctrl+C from tokio
-                let rt = Runtime::new().expect("create rt");
-                rt.block_on(async {
-                    let _ = tokio::signal::ctrl_c().await;
-                    stop_flag_c.store(true, Ordering::SeqCst);
-                });
-            });
-
-            let rt = Runtime::new()?;
-            rt.block_on(async move {
-                if let Err(e) = run_http_server(addr, stop_flag).await {
-                    error!("Server error (console): {e:?}");
-                }
-            });
-        }
-        Some(_) => {
-            print_usage();
-        }
-        None => {
-            // No args: launched by Service Control Manager
-            service_dispatcher::start(SERVICE_NAME, ffi_service_main)?;
         }
     }
 
     Ok(())
 }
 
-fn print_usage() {
-    eprintln!(
-        "Usage:
-  {} install     # Install the service (admin required)
-  {} uninstall   # Uninstall the service (admin required)
-  {} start       # Start the service
-  {} stop        # Stop the service
-  {} run         # Run in console (debug)",
-        exe_name(),
-        exe_name(),
-        exe_name(),
-        exe_name(),
-        exe_name(),
-    );
-}
 
-fn exe_name() -> String {
-    std::env::current_exe()
-        .ok()
-        .and_then(|p| p.file_name().map(|s| s.to_string_lossy().to_string()))
-        .unwrap_or_else(|| "service.exe".to_string())
-}
-
-fn current_exe_path() -> Result<PathBuf> {
-    Ok(std::env::current_exe()?)
-}
-
-fn service_manager(connect_flags: ServiceManagerAccess) -> Result<ServiceManager> {
-    Ok(ServiceManager::local_computer(None::<&str>, connect_flags)?)
-}
-
-fn install_service() -> Result<()> {
-    let exe_path = current_exe_path()?;
-    let manager =
-        service_manager(ServiceManagerAccess::CONNECT | ServiceManagerAccess::CREATE_SERVICE)?;
-
-    let service_info = ServiceInfo {
-        name: SERVICE_NAME.into(),
-        display_name: SERVICE_DISPLAY_NAME.into(),
-        service_type: ServiceType::OWN_PROCESS,
-        start_type: ServiceStartType::OnDemand, // Change to Auto or AutoDelayed for automatic start
-        error_control: ServiceErrorControl::Normal,
-        executable_path: exe_path,
-        launch_arguments: vec![],
-        dependencies: vec![],
-        account_name: None, // LocalSystem
-        account_password: None,
-    };
-
-    let service = manager.create_service(
-        &service_info,
-        ServiceAccess::QUERY_STATUS
-            | ServiceAccess::START
-            | ServiceAccess::STOP
-            | ServiceAccess::DELETE,
-    )?;
-
-    let _ = service.set_description("Axum + Tokio REST API running as a Windows Service (Rust)");
-    Ok(())
-}
-
-fn uninstall_service() -> Result<()> {
-    let manager = service_manager(ServiceManagerAccess::CONNECT)?;
-    let service = manager.open_service(SERVICE_NAME, ServiceAccess::DELETE)?;
-    service.delete()?;
-    Ok(())
-}
-
-fn start_service() -> Result<()> {
-    let manager = service_manager(ServiceManagerAccess::CONNECT)?;
-    let service = manager.open_service(
-        SERVICE_NAME,
-        ServiceAccess::START | ServiceAccess::QUERY_STATUS,
-    )?;
-    service.start(&[] as &[OsString])?; // No args passed
-    Ok(())
-}
-
-fn stop_service() -> Result<()> {
-    let manager = service_manager(ServiceManagerAccess::CONNECT)?;
-    let service = manager.open_service(
-        SERVICE_NAME,
-        ServiceAccess::STOP | ServiceAccess::QUERY_STATUS,
-    )?;
-    service.stop()?;
-    Ok(())
-}
