@@ -8,7 +8,7 @@ win-service = ["dep:windows-service", "dep:clap"]
 
 [dependencies]
 anyhow = "1"
-axum = "0.8"
+axum = {version = "0.8", features = ["multipart"]}
 tokio = { version = "1.39", features = ["rt-multi-thread", "macros", "signal", "time", "net"] }
 hyper = { version = "1", features = ["http1", "http2", "server"] }
 serde = { version = "1", features = ["derive"] }
@@ -19,4 +19,4 @@ toml = "0.9.5"
 
 windows-service = { version = "0.8", optional = true }
 clap = { version = "4.5.47", optional = true, features = ["derive"] }
-
+jsonwebtoken = "9.3.1"

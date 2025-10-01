@@ -6,3 +6,7 @@ active = true
 
 [host]
 port = "17171"
+
+[auth]
+active = true
+token_validation_uri = ""

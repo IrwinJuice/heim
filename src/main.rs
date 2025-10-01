@@ -4,6 +4,7 @@ mod config;
 mod win_service;
 
 use std::{
+    fs::File,
     net::SocketAddr,
     path::PathBuf,
     sync::{
@@ -17,17 +18,19 @@ use std::{
 use anyhow::Result;
 use axum::{
     Json, Router,
-    extract::State,
+    extract::{DefaultBodyLimit, Multipart, State},
+    http::StatusCode,
     routing::{get, post},
 };
 use serde::{Deserialize, Serialize};
 use tokio::{net::TcpListener, time::sleep};
-use tracing::info;
+use tracing::{info, warn};
 use tracing_subscriber::{EnvFilter, fmt, layer::SubscriberExt, util::SubscriberInitExt};
+
+use crate::config::{Config, load_config};
 
 #[cfg(feature = "win-service")]
 use crate::cli::args::{Cli, Commands};
-use crate::config::{Config, load_config};
 #[cfg(feature = "win-service")]
 use crate::win_service::{
     SERVICE_DISPLAY_NAME, SERVICE_NAME, install_service, start_service, stop_service,
@@ -57,32 +60,32 @@ async fn root() -> &'static str {
     "Axum + Tokio running as a Windows Service. Try GET /health or POST /echo"
 }
 
-#[derive(Serialize)]
-struct Health {
-    status: &'static str,
-    uptime_secs: u64,
-}
+// #[derive(Serialize)]
+// struct Health {
+//     status: &'static str,
+//     uptime_secs: u64,
+// }
 
-async fn health(State(state): State<AppState>) -> Json<Health> {
-    Json(Health {
-        status: "ok",
-        uptime_secs: state.started_at.elapsed().as_secs(),
-    })
-}
+// async fn health(State(state): State<AppState>) -> Json<Health> {
+//     Json(Health {
+//         status: "ok",
+//         uptime_secs: state.started_at.elapsed().as_secs(),
+//     })
+// }
 
-#[derive(Deserialize, Serialize)]
-struct EchoPayload {
-    message: String,
-}
-
-async fn echo(Json(payload): Json<EchoPayload>) -> Json<EchoPayload> {
-    Json(payload)
-}
+// async fn copy(State(state): State<AppState>) -> Json<Health> {
+//     Json(Health {
+//         status: "ok",
+//         uptime_secs: state.started_at.elapsed().as_secs(),
+//     })
+// }
 
 async fn run_http_server(addr: SocketAddr, stop_flag: Arc<AtomicBool>) -> Result<()> {
     let app = Router::new()
-        .route("/", get(root))
-        .route("/health", get(health))
+        // .route("/health", get(health))
+        // .route("/copy", get(copy)).layer(DefaultBodyLimit::disable())
+        .route("/deploy", get(deploy))
+        .layer(DefaultBodyLimit::disable())
         .with_state(AppState {
             started_at: std::time::Instant::now(),
         });
@@ -109,7 +112,6 @@ async fn run_http_server(addr: SocketAddr, stop_flag: Arc<AtomicBool>) -> Result
 
 #[cfg(not(feature = "win-service"))]
 fn main() -> Result<()> {
-    print!("main");
     Ok(())
 }
 
@@ -117,7 +119,6 @@ fn main() -> Result<()> {
 fn main() -> Result<()> {
     let args = Cli::parse();
     let config = load_config()?;
-
 
     match args.command {
         Commands::Install => {
@@ -140,3 +141,61 @@ fn main() -> Result<()> {
 
     Ok(())
 }
+
+pub struct Artifact {
+    pub id: String,
+    pub file: File,
+}
+
+async fn deploy(mut multipart: Multipart) -> Result<Artifact, StatusCode> {
+    let file;
+    let id;
+
+    while let Some(mut field) = multipart.next_field().await.unwrap() {
+        let name = field.name().unwrap().to_string();
+
+        if name == "file" {
+            file = field
+                .bytes()
+                .await
+                .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        } else if name == "artifact_id" {
+            id = field.text().await;
+        } else {
+            // Handle unknown fields
+            warn!("Unknown field: {}", name);
+            Err(StatusCode::BAD_REQUEST)
+        }
+    }
+    
+    file 
+
+    Ok(Artifact { id, file })
+}
+
+
+
+// impl<S> FromRequestParts<S> for Token
+// where
+//     S: Send + Sync,
+// {
+//     type Rejection = AuthError;
+
+//     async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
+//         // Extract the token from the authorization header
+//         let TypedHeader(Authorization(bearer)) = parts
+//             .extract::<TypedHeader<Authorization<Bearer>>>()
+//             .await
+//             .map_err(|_| AuthError::InvalidToken)?;
+//         // Decode the user data
+//         let token_data = decode::<Claims>(bearer.token(), &KEYS.decoding, &Validation::default())
+//             .map_err(|_| AuthError::InvalidToken)?;
+
+//         Ok(token_data.claims)
+//     }
+// }
+
+// pub struct Token {
+//     token: String,
+//     kind: String
+// }
