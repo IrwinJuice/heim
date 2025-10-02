@@ -1,8 +1,11 @@
 mod cli;
 mod config;
+mod heim;
+mod error;
 #[cfg(feature = "win-service")]
 mod win_service;
-mod heim;
+
+use heim::load_heim;
 
 use std::{
     fs::File,
@@ -113,6 +116,10 @@ async fn run_http_server(addr: SocketAddr, stop_flag: Arc<AtomicBool>) -> Result
 
 #[cfg(not(feature = "win-service"))]
 fn main() -> Result<()> {
+    let config = load_config().unwrap();
+    let heim = load_heim().unwrap();
+    
+    
     Ok(())
 }
 
@@ -143,38 +150,37 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-pub struct Artifact {
-    pub id: String,
-    pub file: File,
+// pub struct Artifact {
+//     pub id: String,
+//     pub file: File,
+// }
+
+async fn deploy(mut multipart: Multipart) {
+    // let file;
+    // let id;
+
+    todo!();
+    // while let Some(mut field) = multipart.next_field().await.unwrap() {
+    //     let name = field.name().unwrap().to_string();
+    //
+    //     if name == "file" {
+    //         file = field
+    //             .bytes()
+    //             .await
+    //             .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    //     } else if name == "artifact_id" {
+    //         id = field.text().await;
+    //     } else {
+    //         // Handle unknown fields
+    //         warn!("Unknown field: {}", name);
+    //         Err(StatusCode::BAD_REQUEST)
+    //     }
+    // }
+
+    // file
+
+    // Ok(Artifact { id, file })
 }
-
-async fn deploy(mut multipart: Multipart) -> Result<Artifact, StatusCode> {
-    let file;
-    let id;
-
-    while let Some(mut field) = multipart.next_field().await.unwrap() {
-        let name = field.name().unwrap().to_string();
-
-        if name == "file" {
-            file = field
-                .bytes()
-                .await
-                .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-        } else if name == "artifact_id" {
-            id = field.text().await;
-        } else {
-            // Handle unknown fields
-            warn!("Unknown field: {}", name);
-            Err(StatusCode::BAD_REQUEST)
-        }
-    }
-    
-    file 
-
-    Ok(Artifact { id, file })
-}
-
-
 
 // impl<S> FromRequestParts<S> for Token
 // where
