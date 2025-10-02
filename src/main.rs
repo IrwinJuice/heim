@@ -2,6 +2,7 @@ mod cli;
 mod config;
 #[cfg(feature = "win-service")]
 mod win_service;
+mod heim;
 
 use std::{
     fs::File,

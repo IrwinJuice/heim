@@ -1,0 +1,165 @@
+{
+  "deploy": {
+    "root_path": "D:\\projects\\artifacts",
+    "artifacts": [
+      {
+        "id": "explorer",
+        "kind": "java",
+        "backup": true,
+        "destination": "explorer-service",
+        "excluded_files": [
+          "up.ps1",
+          "shutdown.ps1"
+        ],
+        "run_after": {
+          "powershell": "Start-Process powershell -ArgumentList 'D:\\projects\\artifacts\\explorer-service\\up.ps1'"
+        }
+      },
+      {
+        "id": "constructor",
+        "kind": "java",
+        "backup": true,
+        "destination": "constructor-service",
+        "excluded_files": [
+          "up.ps1",
+          "shutdown.ps1"
+        ],
+        "run_after": {
+          "powershell": "Start-Process powershell -ArgumentList 'D:\\projects\\artifacts\\constructor-service\\up.ps1'"
+        }
+      },
+      {
+        "id": "stat-entrypoint-service-devdb",
+        "kind": "java",
+        "backup": true,
+        "destination": "stat-entrypoint-service-devdb",
+        "excluded_files": [
+          "up.ps1",
+          "shutdown.ps1"
+        ],
+        "run_after": {
+          "powershell": "Start-Process powershell -ArgumentList 'D:\\projects\\artifacts\\stat-entrypoint-service-devdb\\up.ps1'"
+        }
+      },
+      {
+        "id": "stat-entrypoint-service-sdas",
+        "kind": "java",
+        "backup": true,
+        "destination": "stat-entrypoint-service-sdas",
+        "excluded_files": [
+          "up.ps1",
+          "shutdown.ps1"
+        ],
+        "run_after": {
+          "powershell": "Start-Process powershell -ArgumentList 'D:\\projects\\artifacts\\stat-entrypoint-service-sdas\\up.ps1'"
+        }
+      },
+      {
+        "id": "stat-control-service-devdb",
+        "kind": "java",
+        "backup": true,
+        "destination": "stat-control-service-devdb",
+        "excluded_files": [
+          "up.ps1",
+          "shutdown.ps1"
+        ],
+        "run_after": {
+          "powershell": "Start-Process powershell -ArgumentList 'D:\\projects\\artifacts\\stat-control-service-devdb\\up.ps1'"
+        }
+      },
+      {
+        "id": "stat-control-service-sdas",
+        "kind": "java",
+        "backup": true,
+        "destination": "stat-control-service-sdas",
+        "excluded_files": [
+          "up.ps1",
+          "shutdown.ps1"
+        ],
+        "run_after": {
+          "powershell": "Start-Process powershell -ArgumentList 'D:\\projects\\artifacts\\stat-control-service-sdas\\up.ps1'"
+        }
+      },
+      {
+        "id": "stat-loader-service-devdb",
+        "kind": "java",
+        "backup": true,
+        "destination": "stat-loader-service-devdb",
+        "excluded_files": [
+          "up.ps1",
+          "shutdown.ps1"
+        ],
+        "run_after": {
+          "powershell": "Start-Process powershell -ArgumentList 'D:\\projects\\artifacts\\stat-loader-service-devdb\\up.ps1'"
+        }
+      },
+      {
+        "id": "stat-loader-service-sdas",
+        "kind": "java",
+        "backup": true,
+        "destination": "stat-loader-service-sdas",
+        "excluded_files": [
+          "up.ps1",
+          "shutdown.ps1"
+        ],
+        "run_after": {
+          "powershell": "Start-Process powershell -ArgumentList 'D:\\projects\\artifacts\\stat-loader-service-sdas\\up.ps1'"
+        }
+      },
+      {
+        "id": "explorer-client",
+        "kind": "angular",
+        "backup": true,
+        "destination": "explorer-client\\explorer",
+        "excluded_files": [
+          "app.config.js"
+        ]
+      },
+      {
+        "id": "loader-client",
+        "kind": "angular",
+        "backup": true,
+        "destination": "loader-client\\NBUStatEntryPoint",
+        "excluded_files": [
+          "app.config.js"
+        ]
+      },
+      {
+        "id": "loader-client-devdb",
+        "kind": "angular",
+        "backup": true,
+        "destination": "loader-client-devdb\\NBUStatEntryPoint\\devdb",
+        "excluded_files": [
+          "app.config.js"
+        ]
+      },
+      {
+        "id": "constructor-client",
+        "kind": "angular",
+        "backup": true,
+        "destination": "constructor-client\\constructor",
+        "excluded_files": [
+          "app.config.js"
+        ]
+      },
+      {
+        "id": "arm-control-client",
+        "kind": "angular",
+        "backup": true,
+        "destination": "arm-control-client\\arm-control",
+        "excluded_files": [
+          "app.config.js"
+        ]
+      },
+      {
+        "id": "odin-client",
+        "kind": "angular",
+        "backup": true,
+        "destination": "odin-client\\odin",
+        "excluded_files": [
+          "app.config.js"
+        ]
+      }
+    ]
+  }
+}
