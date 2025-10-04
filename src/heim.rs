@@ -1,4 +1,4 @@
-use std::fs;
+use tokio::fs::File;
 use tracing::error;
 
 use serde::Deserialize;
@@ -32,8 +32,8 @@ pub struct Run {
     pub powershell: Option<String>,
 }
 
-pub fn load_heim() -> Result<Heim, HeimError> {
-    let data = fs::read_to_string("Heim.json").map_err(|e| {
+pub async fn load_heim(path: &str) -> Result<Heim, HeimError> {
+    let file = tokio::fs::read_to_string(path).await.map_err(|e| {
         error!("Failed to read Heim.json: {}", e);
         HeimError {
             kind: ErrorKind::ArtifactError,
@@ -41,7 +41,7 @@ pub fn load_heim() -> Result<Heim, HeimError> {
         }
     })?;
 
-    let heim: Heim = serde_json::from_str(&data).map_err(|e| {
+    let heim: Heim = serde_json::from_str(&file).map_err(|e| {
         error!("Failed to parse Heim.json: {}", e);
         HeimError {
             kind: ErrorKind::ArtifactError,

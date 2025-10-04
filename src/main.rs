@@ -1,21 +1,20 @@
 mod cli;
 mod config;
-mod heim;
 mod error;
+mod heim;
 #[cfg(feature = "win-service")]
 mod win_service;
 
 use heim::load_heim;
 
 use std::{
-    fs::File,
     net::SocketAddr,
     path::PathBuf,
+    sync::Mutex,
     sync::{
         Arc,
         atomic::{AtomicBool, Ordering},
     },
-    thread,
     time::Duration,
 };
 
@@ -26,9 +25,11 @@ use axum::{
     http::StatusCode,
     routing::{get, post},
 };
+use notify::{RecommendedWatcher, Watcher};
 use serde::{Deserialize, Serialize};
+use tokio::sync::mpsc;
 use tokio::{net::TcpListener, time::sleep};
-use tracing::{info, warn};
+use tracing::{error, info};
 use tracing_subscriber::{EnvFilter, fmt, layer::SubscriberExt, util::SubscriberInitExt};
 
 use crate::config::{Config, load_config};
@@ -115,11 +116,51 @@ async fn run_http_server(addr: SocketAddr, stop_flag: Arc<AtomicBool>) -> Result
 }
 
 #[cfg(not(feature = "win-service"))]
-fn main() -> Result<()> {
+#[tokio::main]
+async fn main() -> Result<()> {
+    let path_to_heim_file = "Heim.json";
+    let path: PathBuf = path_to_heim_file.into();
     let config = load_config().unwrap();
-    let heim = load_heim().unwrap();
+    let heim = Arc::new(Mutex::new(load_heim(&path_to_heim_file).await.unwrap()));
+
     
-    
+    let (tx, mut rx) = mpsc::channel(1);
+
+    // watch on Heim.json file
+    let mut watcher: RecommendedWatcher = Watcher::new(
+        move |res: notify::Result<notify::Event>| {
+            let tx = tx.clone();
+            tokio::spawn(async move {
+                if let Ok(event) = res {
+                    let _ = tx.send(event).await;
+                }
+            });
+        },
+        notify::Config::default(),
+    )?;
+    watcher.watch(&path, notify::RecursiveMode::NonRecursive)?;
+
+    let heim_clone = Arc::clone(&heim);
+    tokio::spawn(async move {
+        loop {
+            if let Some(event) = rx.recv().await {
+                if event.kind.is_modify() {
+                    match load_heim(&path_to_heim_file).await {
+                        Ok(heim) => {
+                            *heim_clone.lock().unwrap() = heim;
+                            info!("Heim file has been updated!")
+                        },
+                        Err(e) => {
+                            error!("{}", e)
+                        }
+                    }
+                }
+            }
+
+            tokio::time::sleep(Duration::from_secs(60)).await;
+        }
+    });
+
     Ok(())
 }
 
